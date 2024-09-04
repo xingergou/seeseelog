@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block head %}
+    <title>The server system</title>
+
+{% block body %}
+    <div class="container">
+        <div class="row">
+            <table class="table table-bordered table-hover">
+                <thead>
+                    <th>服务器名</th>
+                    <th>服务器IP</th>
+                    <th>服务器端口</th>
+                    <th>服务器用户</th>
+                </thead>
+                <tbody id="server_list">
+
+                </tbody>
+            </table>
+        </div>
+    </div>
+{% endblock %}

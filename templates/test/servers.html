@@ -1,0 +1,386 @@
+{% extends "base.html" %}
+
+{% block head %}
+    <title>部署系统</title>
+    <style type="text/css">
+        #pre_servers_result {
+            white-space: pre-wrap;
+            white-space: -moz-pre-wrap;
+            white-space: -o-pre-wrap;
+            word-wrap: break-word;
+        }
+    </style>
+    <script type="text/javascript">
+        $(document).ready(function () {
+            // 初始化并显示分页
+            get_page(1, 15, '');
+
+            // 搜索按钮事件
+            $('#bt_search').click(function () {
+                let text_search = $('#text_search').val();
+                get_page(1, 15, text_search);
+            });
+
+            // 绑定新增配置模态框打开事件
+            $('#showAddFormButton').on('click', function() {
+                $('#showAddForm').modal('show');
+            });
+
+            // 新增表单提交事件
+            $('#bt_add').on('click', function() {
+                // 获取新增表单数据
+                var name = $('#add_name').val().trim();
+                var hosts_path = $('#add_hosts_path').val().trim();
+                var hosts_pattern = $('#add_hosts_pattern').val().trim();
+                var module = $('#add_module').val().trim();
+                var args = $('#add_args').val().trim();
+                var forks = $('#add_forks').val().trim();
+
+                // 验证字段
+                var info = { name, hosts_path, hosts_pattern, module, args, forks };
+                var missingFields = Object.keys(info).filter(key => !info[key]);
+
+                if (missingFields.length > 0) {
+                    alert('请确保所有字段都已填写！缺少：' + missingFields.join(', '));
+                    return;
+                }
+
+                // AJAX 请求新增数据
+                $.ajax({
+                    url: '/insertdb/add',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify(info),
+                    success: function(response) {
+                        alert('配置新增成功');
+                        $('#showAddForm').modal('hide');
+                        // 刷新数据
+                        get_page(1, 15, '');
+                    },
+                    error: function(error) {
+                        alert('配置新增失败：' + (error.responseJSON && error.responseJSON.error ? error.responseJSON.error : '未知错误'));
+                    }
+                });
+            });
+
+            // 绑定更新按钮点击事件
+            $('#bt_update').click(function () {
+                // 获取更新表单数据
+                var id = $('#update_id').val();
+                var name = $('#update_name').val();
+                var hosts_path = $('#update_hosts_path').val();
+                var hosts_pattern = $('#update_hosts_pattern').val();
+                var module = $('#update_module').val();
+                var args = $('#update_args').val();
+                var forks = $('#update_forks').val();
+
+                // 构造更新请求数据
+                var info = { id, name, hosts_path, hosts_pattern, module, args, forks };
+
+                // AJAX 请求更新数据
+                $.ajax({
+                    url: '/servers/update',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify(info),
+                    success: function (data) {
+                        $('#updateshow').modal('hide');
+                        // 刷新数据
+                        get_page(parseInt($('#pagenow').html()), 15, $('#text_search').val());
+                    }
+                });
+            });
+
+            // 批量删除按钮点击事件
+            $('#batchDeleteButton').on('click', function () {
+                let selectedIds = $('input[name="serverSelect"]:checked').map(function () {
+                    return $(this).val();
+                }).get();
+
+                if (selectedIds.length === 0) {
+                    alert('请选择要删除的配置。');
+                    return;
+                }
+
+                if (confirm('确定要删除选中的配置吗？')) {
+                    $.ajax({
+                        url: '/servers/batch_delete',
+                        type: 'POST',
+                        contentType: 'application/json',
+                        data: JSON.stringify({ ids: selectedIds }),
+                        success: function (response) {
+                            alert('批量删除成功');
+                            get_page(1, 15, '');
+                        },
+                        error: function (error) {
+                            alert('批量删除失败：' + (error.responseJSON && error.responseJSON.message ? error.responseJSON.message : '未知错误'));
+                        }
+                    });
+                }
+            });
+        });
+
+        // 分页函数
+        function get_page(pagenow, pagesize, search) {
+            let info = { pagenow, pagesize, search };
+            $.ajax({
+                url: '/servers/get_by_page',
+                type: 'post',
+                contentType: 'application/json',
+                data: JSON.stringify(info),
+                success: function (data) {
+                    let allresult = JSON.parse(data);
+                    $("#tbodycontent").html("");
+                    allresult.forEach(item => {
+                        let row = `<tr>
+                            <td><input type="checkbox" name="serverSelect" value="${item['id']}"></td>
+                            <td>${item['name']}</td>
+                            <td>${item['hosts_path']}</td>
+                            <td>${item['hosts_pattern']}</td>
+                            <td>${item['module']}</td>
+                            <td>${item['args']}</td>
+                            <td>${item['forks']}</td>
+                            <td>
+                                <button class="btn btn-sm" onClick="update_show(${item['id']})">更新</button>
+                                <button class="btn btn-sm btn-danger" onClick="delete_server(${item['id']})">删除</button>
+                                <button class="btn btn-sm" onClick="deploy(${item['id']})">查看</button>
+                            </td>
+                        </tr>`;
+                        $("#tbodycontent").append(row);
+                    });
+                    update_pagination(pagenow, pagesize, search);
+                }
+            });
+        }
+
+        // 更新分页信息
+        function update_pagination(pagenow, pagesize, search) {
+            let pagedown = `<button type="button" onclick="get_page(${pagenow - 1}, ${pagesize}, '${search}')" class="btn btn-sm">上一页</button>`;
+            let pageup = `<button type="button" onclick="get_page(${pagenow + 1}, ${pagesize}, '${search}')" class="btn btn-sm">下一页</button>`;
+            $("#pageinfo").html(`当前页：<p style='display: inline;' id='pagenow'>${pagenow}</p> ${pagedown} ${pageup}`);
+        }
+
+        // 显示更新模态框
+        function update_show(id) {
+            $.ajax({
+                url: '/servers/get_by_id',
+                type: 'get',
+                data: { id },
+                success: function (data) {
+                    let tmpone = JSON.parse(data)[0];
+                    $('#update_id').val(id);
+                    $('#update_name').val(tmpone['name']);
+                    $('#update_hosts_path').val(tmpone['hosts_path']);
+                    $('#update_hosts_pattern').val(tmpone['hosts_pattern']);
+                    $('#update_module').val(tmpone['module']);
+                    $('#update_args').val(tmpone['args']);
+                    $('#update_forks').val(tmpone['forks']);
+                    $('#updateshow').modal('show');
+                }
+            });
+        }
+
+        // 删除单个配置
+        // function delete_server(id) {
+        //     if (confirm('确定要删除此配置吗？')) {
+        //         $.ajax({
+        //             url: '/servers/delete',
+        //             type: 'POST',
+        //             contentType: 'application/json',
+        //             data: JSON.stringify({ id }),
+        //             success: function (response) {
+        //                 alert('删除成功');
+        //                 get_page(parseInt($('#pagenow').html()), 15, $('#text_search').val());
+        //             },
+        //             error: function (error) {
+        //                 alert('删除失败：' + (error.responseJSON && error.responseJSON.message ? error.responseJSON.message : '未知错误'));
+        //             }
+        //         });
+        //     }
+        // }
+        function delete_server(id) {
+            if (confirm('确定要删除此配置吗？')) {
+                $.ajax({  
+                    url: '/servers/delete',  
+                    type: 'POST',  
+                    contentType: 'application/json',  
+                    data: JSON.stringify({ id: id }),  
+                    success: function (response) {  
+                        if (response && response.hasOwnProperty('status')) {  
+                            if (response.status === 'success') {  
+                                alert('删除成功');  
+                                get_page(parseInt($('#pagenow').html()), 15, $('#text_search').val());  
+                            } else {  
+                                alert('删除失败：' + (response.message || '未知错误'));  
+                            }  
+                        } else {  
+                            alert('未收到有效的响应数据');  
+                        }  
+                    },  
+                    error: function (error) {  
+                        var errorMessage = '删除失败：未知错误';  
+                        if (error.responseJSON && error.responseJSON.message) {  
+                            errorMessage = '删除失败：' + error.responseJSON.message;  
+                        }  
+                        alert(errorMessage);  
+                    }  
+                });
+            }
+        }
+        // 部署功能
+        function deploy(id) {
+            $.ajax({
+                url: '/servers/deploy_by_id',
+                type: 'get',
+                data: { id },
+                success: function (data) {
+                    let allresult = JSON.parse(data);
+                    $("#serverslog").modal('show');
+                    $("#p_ansible_command").html(allresult['command']);
+                    setInterval(function () {
+                        $.ajax({
+                            url: '/static/logs/' + allresult['logpath'],
+                            type: 'get',
+                            success: function (data) {
+                                $("#pre_servers_result").html(data);
+                            }
+                        });
+                    }, 3000);
+                }
+            });
+        }
+    </script>
+{% endblock %}
+
+{% block body %}
+    <div class="container">
+        <div class="row">
+            <div class="col">
+                <form class="form-inline">
+                    <input type="text" class="form-control" id="text_search">
+                    <button type="button" class="btn" id="bt_search">搜索</button>
+                    <button type="button" class="btn btn-primary" id="showAddFormButton">新增 Ansible 配置</button>
+                    <button type="button" class="btn btn-danger" id="batchDeleteButton">批量删除</button>
+                </form>
+
+                <table class="table table-bordered table-hover">
+                    <thead>
+                        <tr>
+                            <th><input type="checkbox" id="selectAll"></th>
+                            <th>部署名</th>
+                            <th>主机配置</th>
+                            <th>主机或主机组</th>
+                            <th>模块</th>
+                            <th>模块参数</th>
+                            <th>并发数</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbodycontent"></tbody>
+                </table>
+                <div id="pageinfo"></div>
+            </div>
+        </div>
+
+        <!-- 新增 Ansible 配置模态框 -->
+        <div class="modal" id="showAddForm" tabindex="-1">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">新增 Ansible 配置</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-group">
+                            <label for="add_name">部署名:</label>
+                            <input type="text" id="add_name" class="form-control">
+                        </div>
+                        <div class="form-group">
+                            <label for="add_hosts_path">主机配置路径:</label>
+                            <input type="text" id="add_hosts_path" class="form-control">
+                        </div>
+                        <div class="form-group">
+                            <label for="add_hosts_pattern">主机或主机组:</label>
+                            <input type="text" id="add_hosts_pattern" class="form-control">
+                        </div>
+                        <div class="form-group">
+                            <label for="add_module">模块:</label>
+                            <input type="text" id="add_module" class="form-control">
+                        </div>
+                        <div class="form-group">
+                            <label for="add_args">模块参数:</label>
+                            <input type="text" id="add_args" class="form-control">
+                        </div>
+                        <div class="form-group">
+                            <label for="add_forks">并发数:</label>
+                            <input type="number" id="add_forks" class="form-control" min="1">
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" id="bt_add" class="btn btn-primary">保存</button>
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 更新配置模态框 -->
+        <div class="modal" id="updateshow" tabindex="-1">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">更新配置</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <input type="hidden" id="update_id">
+                        <div class="form-group">
+                            <label for="update_name">部署名:</label>
+                            <input type="text" id="update_name" class="form-control">
+                        </div>
+                        <div class="form-group">
+                            <label for="update_hosts_path">主机配置路径:</label>
+                            <input type="text" id="update_hosts_path" class="form-control">
+                        </div>
+                        <div class="form-group">
+                            <label for="update_hosts_pattern">主机或主机组:</label>
+                            <input type="text" id="update_hosts_pattern" class="form-control">
+                        </div>
+                        <div class="form-group">
+                            <label for="update_module">模块:</label>
+                            <input type="text" id="update_module" class="form-control">
+                        </div>
+                        <div class="form-group">
+                            <label for="update_args">模块参数:</label>
+                            <input type="text" id="update_args" class="form-control">
+                        </div>
+                        <div class="form-group">
+                            <label for="update_forks">并发数:</label>
+                            <input type="number" id="update_forks" class="form-control" min="1">
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" id="bt_update" class="btn btn-primary">更新</button>
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 部署日志模态框 -->
+        <div class="modal" id="serverslog" tabindex="-1">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">部署日志</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p id="p_ansible_command"></p>
+                        <pre id="pre_servers_result" style="height: 500px; overflow-y: auto;"></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}
